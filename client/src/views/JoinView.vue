@@ -279,6 +279,14 @@ let timerId = null
 
 const formatExpression = (value) => String(value || '').replaceAll('*', '×').replaceAll('/', '÷')
 
+const loadRoomCodeFromQuery = () => {
+  const queryRoomCode = new URLSearchParams(window.location.search).get('roomCode')
+
+  if (queryRoomCode) {
+    roomCode.value = queryRoomCode.trim().toUpperCase()
+  }
+}
+
 const getOperatorLabel = (operator) => {
   if (operator === '*') {
     return '×'
@@ -494,6 +502,8 @@ const handleFinalPersonalResult = (result) => {
 }
 
 onMounted(() => {
+  loadRoomCodeFromQuery()
+
   socket.on('join_success', handleJoinSuccess)
   socket.on('error_message', handleErrorMessage)
   socket.on('round_started', handleRoundStarted)

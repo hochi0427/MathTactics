@@ -102,6 +102,11 @@ function sendFinalResults(roomCode, room) {
     rank: index + 1,
   }));
 
+  console.log("sendFinalResults", {
+    roomCode,
+    standings,
+  });
+
   io.to(roomCode).emit("final_results", {
     standings,
     totalRounds: ROUND_CONFIGS.length,
@@ -131,12 +136,20 @@ function startRound(roomCode, roundIndex) {
   const room = rooms[roomCode];
 
   if (!room) {
+    console.log("startRound skipped: room not found", {
+      roomCode,
+      roundIndex,
+    });
     return;
   }
 
   const config = ROUND_CONFIGS[roundIndex];
 
   if (!config) {
+    console.log("startRound reached final state", {
+      roomCode,
+      roundIndex,
+    });
     room.state = "final";
     room.currentRound = null;
     sendFinalResults(roomCode, room);
@@ -158,6 +171,15 @@ function startRound(roomCode, roundIndex) {
   };
   room.state = "playing";
 
+  console.log("Starting round", {
+    roomCode,
+    round: config.round,
+    target,
+    numbers,
+    allowDivide: config.allowDivide,
+    includeDecimal: config.includeDecimal,
+  });
+
   if (room.roundTimeout) {
     clearTimeout(room.roundTimeout);
   }
@@ -167,7 +189,9 @@ function startRound(roomCode, roundIndex) {
     room.intermissionTimeout = null;
   }
 
+  console.log(`Setting round timeout for round ${config.round} in room ${roomCode}`);
   room.roundTimeout = setTimeout(() => {
+    console.log(`Round timeout fired for round ${config.round} in room ${roomCode}`);
     resolveRound(roomCode);
   }, ROUND_DURATION * 1000);
 
@@ -267,12 +291,27 @@ function scoreExpression({ expression, result, isValid, target }) {
 
 function resolveRound(roomCode) {
   const room = rooms[roomCode];
+  const currentRound = room?.currentRound;
 
-  if (!room || !room.currentRound || room.currentRound.isResolved) {
+  console.log("resolveRound called", {
+    roomCode,
+    round: currentRound?.round ?? null,
+    roomState: room?.state ?? null,
+    isResolved: currentRound?.isResolved ?? null,
+    playersCount: room ? Object.keys(room.players).length : 0,
+    submissionsCount: currentRound ? Object.keys(currentRound.submissions).length : 0,
+  });
+
+  if (!room || !currentRound || currentRound.isResolved) {
+    console.log("resolveRound skipped", {
+      roomCode,
+      roomExists: Boolean(room),
+      hasCurrentRound: Boolean(currentRound),
+      isResolved: currentRound?.isResolved ?? null,
+    });
     return;
   }
 
-  const currentRound = room.currentRound;
   currentRound.isResolved = true;
 
   const playerResults = Object.entries(room.players).map(([playerSocketId, player]) => {
@@ -306,6 +345,16 @@ function resolveRound(roomCode) {
       roundedResult: result.roundedResult,
       target: currentRound.target,
       isValid: result.isValid,
+    });
+
+    console.log("resolveRound player result", {
+      playerName: player.name,
+      playerSocketId,
+      expression,
+      isValid: result.isValid,
+      roundedResult: result.roundedResult,
+      roundScore: result.roundScore,
+      totalScore: player.totalScore,
     });
 
     return {
@@ -361,6 +410,13 @@ function resolveRound(roomCode) {
 
   const message = getIntermissionMessage(currentRound.round);
 
+  console.log("intermission_started", {
+    roomCode,
+    roundCompleted: currentRound.round,
+    nextRound: currentRound.round + 1,
+    duration: INTERMISSION_DURATION,
+  });
+
   io.to(roomCode).emit("intermission_started", {
     roundCompleted: currentRound.round,
     nextRound: currentRound.round + 1,
@@ -372,6 +428,7 @@ function resolveRound(roomCode) {
   });
 
   room.intermissionTimeout = setTimeout(() => {
+    console.log(`Intermission timeout fired for room ${roomCode}; starting round ${room.currentRoundIndex + 2}`);
     startRound(roomCode, room.currentRoundIndex + 1);
   }, INTERMISSION_DURATION * 1000);
 
@@ -458,7 +515,25 @@ io.on("connection", (socket) => {
   socket.on("submit_expression", ({ roomCode, expression }) => {
     const room = rooms[roomCode];
 
+    console.log("submit_expression received", {
+      roomCode,
+      expression,
+      socketId: socket.id,
+      roomExists: Boolean(room),
+      roomState: room?.state ?? null,
+      hasCurrentRound: Boolean(room?.currentRound),
+      isResolved: room?.currentRound?.isResolved ?? null,
+    });
+
     if (!room || room.state !== "playing" || !room.currentRound || room.currentRound.isResolved) {
+      console.log("submit_expression rejected", {
+        roomCode,
+        socketId: socket.id,
+        roomExists: Boolean(room),
+        roomState: room?.state ?? null,
+        hasCurrentRound: Boolean(room?.currentRound),
+        isResolved: room?.currentRound?.isResolved ?? null,
+      });
       return;
     }
 
@@ -468,6 +543,13 @@ io.on("connection", (socket) => {
 
     const submittedCount = Object.keys(room.currentRound.submissions).length;
     const totalPlayers = Object.keys(room.players).length;
+
+    console.log("submit_expression stored", {
+      roomCode,
+      socketId: socket.id,
+      submittedCount,
+      totalPlayers,
+    });
 
     io.to(roomCode).emit("submission_count_updated", {
       submittedCount,

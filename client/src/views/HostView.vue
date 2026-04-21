@@ -24,12 +24,20 @@
         </div>
       
 
-        <div v-if="roomCode" class="room-banner">
+        <div v-if="roomCode && gamePhase === 'waiting'" class="room-banner">
           <span>Room Code</span>
           <strong>{{ roomCode }}</strong>
           <button v-if="gamePhase === 'waiting'" class="secondary-button" @click="startGame">
             Start Game
           </button>
+        </div>
+
+        <div v-if="roomCode && gamePhase === 'waiting'" class="qr-panel">
+          <div class="qr-copy">
+            <span>Join Link</span>
+            <a :href="joinLink" target="_blank" rel="noreferrer">{{ joinLink }}</a>
+          </div>
+          <img :src="qrCodeUrl" alt="QR code for joining this room" />
         </div>
 
         <div v-if="gamePhase === 'waiting'" class="players-panel">
@@ -77,16 +85,6 @@
               <strong>{{ allowDivide ? '+ - × ÷' : '+ - ×' }}</strong>
             </article>
           </div>
-
-          <div v-if="topThree.length" class="leaderboard-panel">
-            <h2>Total Score Top 3</h2>
-            <ol class="leaderboard-list">
-              <li v-for="player in topThree" :key="player.playerSocketId">
-                <span>{{ player.name }}</span>
-                <strong>{{ player.totalScore }}</strong>
-              </li>
-            </ol>
-          </div>
         </div>
 
         <div v-if="gamePhase === 'intermission'" class="round-panel">
@@ -106,17 +104,18 @@
                   <p><strong>Divide by a decimal</strong> to make it larger.</p>
                 </div>
               </div>
-              <div class="intermission-meta">
-                <div class="score-pill">
-                  <span>Round Score</span>
-                  <strong>{{ intermissionRoundScore }}</strong>
-                </div>
-                <div class="score-pill">
-                  <span>Total Score</span>
-                  <strong>{{ intermissionTotalScore }}</strong>
-                </div>
-              </div>
             </div>
+          </div>
+
+          <div class="leaderboard-panel">
+            <h2>Current Leaderboard</h2>
+            <ol v-if="currentLeaderboard.length" class="leaderboard-list">
+              <li v-for="player in currentLeaderboard" :key="player.playerSocketId">
+                <span>{{ player.name }}</span>
+                <strong>{{ player.totalScore }}</strong>
+              </li>
+            </ol>
+            <p v-else class="empty-state">No scores yet.</p>
           </div>
         </div>
 
@@ -125,8 +124,8 @@
             <p class="eyebrow">Final Result</p>
             <h2>Game Complete</h2>
             <h3>Leaderboard</h3>
-            <ol v-if="leaderboard.length" class="leaderboard-list">
-              <li v-for="player in leaderboard" :key="player.playerSocketId">
+            <ol v-if="finalLeaderboard.length" class="leaderboard-list">
+              <li v-for="player in finalLeaderboard" :key="player.playerSocketId">
                 <span>{{ player.name }}</span>
                 <strong>{{ player.totalScore }}</strong>
               </li>
@@ -140,7 +139,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import socket from '../socket'
 
 const roomCode = ref('')
@@ -160,10 +159,27 @@ const allowDivide = ref(false)
 const intermissionTitle = ref('')
 const intermissionBody = ref('')
 const intermissionIcon = ref('')
-const intermissionRoundScore = ref('-')
-const intermissionTotalScore = ref('-')
 
 let timerId = null
+
+const currentLeaderboard = computed(() => topThree.value.slice(0, 3))
+const finalLeaderboard = computed(() => leaderboard.value.slice(0, 3))
+
+const joinLink = computed(() => {
+  if (!roomCode.value) {
+    return ''
+  }
+
+  return `${window.location.origin}/join?roomCode=${encodeURIComponent(roomCode.value)}`
+})
+
+const qrCodeUrl = computed(() => {
+  if (!joinLink.value) {
+    return ''
+  }
+
+  return `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(joinLink.value)}`
+})
 
 const createRoom = () => {
   socket.emit('create_room')
@@ -255,8 +271,6 @@ const handleIntermissionStarted = ({
   intermissionBody.value = body
   intermissionIcon.value = upcomingRound === 2 ? '÷' : '0.5'
   topThree.value = currentTopThree
-  intermissionRoundScore.value = currentTopThree[0]?.roundScore ?? '-'
-  intermissionTotalScore.value = currentTopThree[0]?.totalScore ?? '-'
   startTimer(duration)
 }
 
@@ -476,6 +490,48 @@ h2 {
   box-shadow: none;
 }
 
+.qr-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 16px;
+  border: 1px solid #dccd65;
+  border-radius: 8px;
+  padding: 16px;
+  background: #fffdf0;
+}
+
+.qr-copy {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.qr-copy span {
+  color: #727b39;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.qr-copy a {
+  color: #43501e;
+  font-weight: 700;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  text-decoration-color: rgba(67, 80, 30, 0.35);
+  text-underline-offset: 3px;
+}
+
+.qr-panel img {
+  width: 132px;
+  height: 132px;
+  border: 1px solid #e5d97f;
+  border-radius: 8px;
+  padding: 8px;
+  background: #ffffff;
+}
+
 .section-heading {
   align-items: center;
   margin-bottom: 14px;
@@ -588,34 +644,6 @@ h2 {
   color: #4c571f;
 }
 
-.intermission-meta {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 10px;
-}
-
-.score-pill {
-  border: 1px solid #ded16d;
-  border-radius: 8px;
-  padding: 10px 12px;
-  color: #4c571f;
-  background: #fffbe0;
-}
-
-.score-pill span {
-  display: block;
-  margin-bottom: 4px;
-  color: #727b39;
-  font-size: 0.8rem;
-  font-weight: 700;
-}
-
-.score-pill strong {
-  color: #30391a;
-  font-size: 1.2rem;
-}
-
 .final-panel {
   display: grid;
   gap: 12px;
@@ -726,11 +754,12 @@ h2 {
   .host-header,
   .game-header,
   .room-banner,
+  .qr-panel,
   .intermission-card {
     display: grid;
   }
 
-  .intermission-meta {
+  .qr-panel {
     grid-template-columns: 1fr;
   }
 
