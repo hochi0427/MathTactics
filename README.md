@@ -1,0 +1,1 @@
+Math Tactics is a multiplayer mathematics game designed for upper elementary school students. Our learning goal is to help students familiarize themselves with mathematical symbols and develop their arithmetic skills.
